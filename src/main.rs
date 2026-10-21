@@ -5,6 +5,9 @@ use dialoguer::Confirm;
 use sysinfo::Disks;
 use std::io::IsTerminal;
 
+mod partition;
+mod iso;
+
 #[derive(Parser, Debug)]
 #[command(name = "usb-less-installer", author, version, about = "Install Linux ISOs directly to internal drives without a USB stick")]
 struct Args {
@@ -73,6 +76,17 @@ fn main() -> Result<()> {
     // Scan disks
     list_disks()?;
 
-    println!("{}", "\n[Phase 1 Complete] Core CLI & Safety checks passed successfully.".green());
+    // Phase 2: Partition Management
+    partition::list_targetable_partitions()?;
+
+    // Phase 3: ISO Validation
+    println!("{}", "\n=== Phase 3: ISO Validation & Extraction ===".cyan().bold());
+    if let Some(iso_path) = &args.iso {
+        iso::validate_iso_path(iso_path)?;
+    } else {
+        println!("{}", "ℹ️ No ISO specified with --iso. You can pass an ISO path to simulate extraction.".yellow());
+    }
+
+    println!("{}", "\n[Phase 1, 2 & 3 Progress] Core checks, partitions, and ISO validation completed successfully.".green());
     Ok(())
 }
