@@ -7,6 +7,7 @@ use std::io::IsTerminal;
 
 mod partition;
 mod iso;
+mod bootloader;
 
 #[derive(Parser, Debug)]
 #[command(name = "usb-less-installer", author, version, about = "Install Linux ISOs directly to internal drives without a USB stick")]
@@ -87,6 +88,9 @@ fn main() -> Result<()> {
         println!("{}", "ℹ️ No ISO specified with --iso. You can pass an ISO path to simulate extraction.".yellow());
     }
 
-    println!("{}", "\n[Phase 1, 2 & 3 Progress] Core checks, partitions, and ISO validation completed successfully.".green());
+    // Phase 4: Bootloader Integration
+    bootloader::register_boot_entry()?;
+
+    println!("{}", "\n[Phases 1-4 Complete] All core modules implemented and verified successfully!".green());
     Ok(())
 }
