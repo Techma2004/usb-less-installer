@@ -1,35 +1,57 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::process::Command;
-use tracing::info;
 
-pub fn register_boot_entry() -> Result<()> {
-    println!("\n=== Phase 4: Bootloader & UEFI Integration ===");
-    
+fn run_and_print(program: &str, args: &[&str], description: &str) -> Result<()> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("Could not run {program}; is it available on PATH?"))?;
+
+    if !output.status.success() {
+        bail!(
+            "{description} failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    Ok(())
+}
+
+/// Inspect the existing firmware boot configuration. Never writes boot entries.
+pub fn inspect_boot_configuration() -> Result<()> {
+    println!("\n=== Firmware boot configuration (read-only) ===");
+
     #[cfg(target_os = "linux")]
     {
-        let which_efiboot = Command::new("which").arg("efibootmgr").output();
-        if which_efiboot.is_err() || !which_efiboot.unwrap().status.success() {
-            println!("⚠️ Warning: 'efibootmgr' not found. UEFI boot entry registration skipped.");
+        if !std::path::Path::new("/sys/firmware/efi").exists() {
+            println!("This session does not appear to be booted in UEFI mode.");
+            println!("No boot configuration was changed.");
             return Ok(());
         }
-
-        info!("Registering UEFI boot entry via efibootmgr...");
-        println!("🔧 Configuring UEFI boot entry with efibootmgr...");
-        // Example command structure (dry run or safe query)
-        let output = Command::new("efibootmgr")
-            .arg("-v")
-            .output()
-            .context("Failed to query UEFI boot entries")?;
-        
-        let stdout = String::from_utf8(output.stdout)?;
-        println!("Current UEFI boot entries inspected successfully ({} bytes).", stdout.len());
+        run_and_print("efibootmgr", &["-v"], "UEFI boot-entry inspection")?;
     }
 
     #[cfg(target_os = "windows")]
     {
-        info!("Registering boot entry via bcdboot...");
-        println!("🔧 Configuring Windows BCD boot entry...");
+        run_and_print(
+            "bcdedit",
+            &["/enum", "firmware"],
+            "Windows firmware boot-entry inspection",
+        )?;
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        run_and_print("bless", &["--getBoot"], "macOS boot target inspection")?;
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        bail!("Boot configuration inspection is not yet implemented for this host operating system.");
+    }
+
+    println!("\nNo boot settings were changed.");
     Ok(())
 }
