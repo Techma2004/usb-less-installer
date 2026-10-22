@@ -1,142 +1,86 @@
 use anyhow::Result;
 use clap::Parser;
-use colored::*;
-use dialoguer::{Confirm, Select, Input};
-use sysinfo::Disks;
+use colored::Colorize;
+use dialoguer::Select;
 use std::io::IsTerminal;
 
-mod partition;
-mod iso;
 mod bootloader;
+mod iso;
+mod partition;
 
-#[derive(Parser, Debug)]
-#[command(name = "usb-less-installer", author, version, about = "Install Linux ISOs directly to internal drives without a USB stick")]
+#[derive(Debug, Parser)]
+#[command(
+    name = "usb-less-installer",
+    version,
+    about = "Inspect OS installation images and storage before a USB-free install"
+)]
 struct Args {
-    #[arg(short, long)]
+    /// Inspect an OS image file without modifying it.
+    #[arg(short, long, value_name = "PATH")]
     iso: Option<String>,
 
-    #[arg(short, long)]
-    force: bool,
+    /// Print read-only storage information.
+    #[arg(long)]
+    inspect_storage: bool,
+
+    /// Inspect the current firmware boot configuration (read-only).
+    #[arg(long)]
+    inspect_boot: bool,
 }
 
-fn check_privileges(force: bool) -> Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        let output = std::process::Command::new("id").arg("-u").output()?;
-        let uid = String::from_utf8(output.stdout)?.trim().to_string();
-        if uid != "0" {
-            println!("{}", "⚠️ Warning: You are not running as root (sudo). Partitioning and bootloader installation will fail without root privileges.".yellow());
-            
-            if !std::io::stdin().is_terminal() || force {
-                println!("{}", "Non-interactive or force flag detected. Continuing without prompt...".dimmed());
-                return Ok(());
-            }
+fn interactive_menu() -> Result<()> {
+    loop {
+        let choices = [
+            "Validate an OS image file",
+            "Inspect storage devices (read-only)",
+            "Inspect firmware boot configuration (read-only)",
+            "Exit",
+        ];
+        let selection = Select::new()
+            .with_prompt("USB-less Installer — safe inspection tools")
+            .items(choices)
+            .default(0)
+            .interact()?;
 
-            let continue_anyway = Confirm::new()
-                .with_prompt("Do you want to continue anyway?")
-                .default(false)
-                .interact()?;
-            if !continue_anyway {
-                std::process::exit(1);
+        match selection {
+            0 => {
+                let path: String = dialoguer::Input::new()
+                    .with_prompt("Path to an OS image (ISO, IMG, or another image file)")
+                    .interact_text()?;
+                iso::inspect_image(&path)?;
             }
+            1 => partition::inspect_storage()?,
+            2 => bootloader::inspect_boot_configuration()?,
+            _ => break,
         }
     }
     Ok(())
-}
-
-fn list_disks() -> Result<()> {
-    println!("{}", "\n=== Step 1: Scanning Available Disks ===".cyan().bold());
-    let disks = Disks::new_with_refreshed_list();
-    
-    if disks.list().is_empty() {
-        println!("{}", "No disks detected or insufficient permissions.".red());
-    } else {
-        println!("Detected {} storage locations/disks:", disks.list().len());
-        for (i, d) in disks.list().iter().enumerate() {
-            println!(
-                " [{}] Name: {:?} | Mount: {:?} | Total: {} GB | Available: {} GB",
-                i,
-                d.name(),
-                d.mount_point(),
-                d.total_space() / (1024 * 1024 * 1024),
-                d.available_space() / (1024 * 1024 * 1024)
-            );
-        }
-    }
-    Ok(())
-}
-
-fn run_interactive_menu() -> Result<String> {
-    println!("{}", "\n=== ULLI Interactive TUI Menu ===".magenta().bold());
-    let choices = vec![
-        "Select ISO File & Run Full Installation",
-        "Scan System Disks & Partitions",
-        "Verify UEFI Bootloader Status",
-        "Exit",
-    ];
-
-    let selection = Select::new()
-        .with_prompt("Choose an option:")
-        .items(&choices)
-        .default(0)
-        .interact()?;
-
-    match selection {
-        0 => {
-            let iso_path: String = Input::new()
-                .with_prompt("Enter path to Linux ISO (e.g. /path/to/omarchy.iso)")
-                .interact_text()?;
-            Ok(iso_path)
-        }
-        1 => {
-            list_disks()?;
-            partition::list_targetable_partitions()?;
-            run_interactive_menu()
-        }
-        2 => {
-            bootloader::register_boot_entry()?;
-            run_interactive_menu()
-        }
-        _ => {
-            println!("Exiting ULLI.");
-            std::process::exit(0);
-        }
-    }
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    println!("{}", "USB-less Installer".cyan().bold());
+    println!("{}", "Read-only prototype: no partitions or boot settings will be changed.".yellow());
 
-    println!("{}", "🚀 USB-less Linux Installer (ULLI-Rust)".green().bold());
-    
-    // Check root / admin privileges
-    check_privileges(args.force)?;
+    let mut did_work = false;
+    if let Some(path) = args.iso.as_deref() {
+        iso::inspect_image(path)?;
+        did_work = true;
+    }
+    if args.inspect_storage {
+        partition::inspect_storage()?;
+        did_work = true;
+    }
+    if args.inspect_boot {
+        bootloader::inspect_boot_configuration()?;
+        did_work = true;
+    }
 
-    let iso_to_use = match args.iso {
-        Some(path) => path,
-        None => {
-            if std::io::stdin().is_terminal() && !args.force {
-                run_interactive_menu()?
-            } else {
-                println!("{}", "ℹ️ No ISO specified. Pass --iso <path> or run interactively in a terminal.".yellow());
-                return Ok(());
-            }
-        }
-    };
+    if !did_work && std::io::stdin().is_terminal() {
+        interactive_menu()?;
+    } else if !did_work {
+        println!("Nothing to do. Use --iso <PATH>, --inspect-storage, or --inspect-boot.");
+    }
 
-    // Scan disks
-    list_disks()?;
-
-    // Phase 2: Partition Management
-    partition::list_targetable_partitions()?;
-
-    // Phase 3: ISO Validation
-    println!("{}", "\n=== Phase 3: ISO Validation & Extraction ===".cyan().bold());
-    iso::validate_iso_path(&iso_to_use)?;
-
-    // Phase 4: Bootloader Integration
-    bootloader::register_boot_entry()?;
-
-    println!("{}", "\n[Phases 1-4 Complete] All core modules implemented and verified successfully!".green());
     Ok(())
 }
