@@ -2,11 +2,11 @@
 name = "usb-less-installer"
 version = "0.1.0"
 edition = "2024"
+description = "Cross-platform, read-only foundation for inspecting OS images and storage"
+license = "GPL-3.0-only"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 dialoguer = "0.11"
 colored = "3.0"
 anyhow = "1.0"
-sysinfo = "0.33"
-tracing = "0.1"
