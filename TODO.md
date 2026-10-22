@@ -1,26 +1,30 @@
-# USB-less Linux Installer (Rust) — Development Roadmap
+# Development roadmap
 
-## Phase 1: Core CLI & Safety Checks
-- [ ] Root / Administrator privilege validation.
-- [ ] Disk health & S.M.A.R.T. warning checks (to catch failing drives like Error 301 early).
-- [ ] Interactive target disk selection and confirmation prompts.
+## Stage 1 — Safe inspection core (current PR)
+- [x] Replace the misleading “installation complete” message with honest read-only behavior.
+- [x] Basic image path and non-empty file checks.
+- [x] Read-only storage inspection for Linux, Windows, and macOS.
+- [x] Read-only boot configuration inspection for supported hosts.
+- [x] Document that host platform and target OS image are separate concepts.
+- [ ] Verify builds and tests on Linux, Windows, and macOS CI.
+- [ ] Add structured storage models and unit tests for parsing platform output.
+- [ ] Add image-format identification, checksums, and optional signature verification.
 
-## Phase 2: Partition & Space Management
-- [ ] Enumerate available disks and partitions.
-- [ ] Calculate unallocated space or shrink existing partitions safely.
-- [ ] Create new target Linux partition (ext4/btrfs).
+## Stage 2 — Architecture before installation
+- [ ] Define a host capability model (firmware mode, privileges, available tools, filesystem support).
+- [ ] Define target-image/installer adapters; do not assume every ISO is a Linux live image.
+- [ ] Add a dry-run plan and machine-readable report format.
+- [ ] Design a safety model, target identity checks, cancellation, logs, and recovery strategy.
+- [ ] Test only in disposable virtual machines and virtual disks initially.
 
-## Phase 3: ISO Parsing & Extraction
-- [ ] Support local ISO file selection.
-- [ ] Extract kernel (`vmlinuz`), initramfs (`initrd`), and root filesystem (`squashfs.img`).
-- [ ] Copy extracted boot files to the target boot partition.
+## Stage 3 — Carefully scoped installation backends
+- [ ] Select one target OS/image family and document its supported combinations.
+- [ ] Implement a non-destructive preparation plan before enabling writes.
+- [ ] Add explicit, repeated confirmation for destructive operations.
+- [ ] Verify boot files and recovery paths before changing firmware configuration.
+- [ ] Never claim success until post-operation checks actually pass.
 
-## Phase 4: Bootloader & UEFI Integration
-- [ ] Configure GRUB or systemd-boot / rEFInd payload.
-- [ ] Register UEFI boot entry (`efibootmgr` on Linux, `bcdboot` on Windows).
-- [ ] Set default boot priority.
-
-## Phase 5: Cleanup, Verification & Polish
-- [ ] Clean up temporary staging files.
-- [ ] Provide clear post-installation instructions.
-- [ ] End-to-end testing and error handling.
+## Stage 4 — GUI
+- [ ] Build a lightweight native GUI over the tested core APIs.
+- [ ] Show host platform, image checks, detected devices, warnings, and dry-run plan.
+- [ ] Keep all destructive actions disabled until a backend is implemented and tested.
