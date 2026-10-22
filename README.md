@@ -1,60 +1,79 @@
-# USB-less Installer (ULLI-Rust)
+# USB-less Installer
 
-A fast, reliable, cross-platform tool written in Rust to install Linux distributions (like Omarchy, Ubuntu, Linux Mint, Fedora, etc.) directly to internal hard drives without needing a physical USB flash drive or manual BIOS/UEFI configuration headaches.
+A Rust project exploring how to start operating-system installations from an existing computer without a USB stick. The goal is to support multiple host platforms and different OS installation images—not just Linux distributions.
 
----
+**Current status: safe, read-only prototype.** This version inspects image files, storage devices, and existing firmware boot configuration. It does not partition, format, extract, install, or change boot settings.
 
-## Features
+## Cross-platform direction
 
-- **Zero USB Required:** Bootstrap and install Linux directly from a running environment (Windows or Linux).
-- **Safety Checks:** Root/Administrator privilege verification and disk health safety warnings.
-- **Partition Management:** Cross-platform storage inspection (`lsblk` on Linux, PowerShell/`diskpart` on Windows).
-- **ISO Validation:** Verifies ISO integrity, size, and boot artifacts.
-- **Bootloader Integration:** Configures UEFI boot entries automatically (`efibootmgr` on Linux / `bcdboot` on Windows).
+The project separates the **host platform** (where the program runs) from the **target image** (the OS the user wants to install).
 
----
+- **Host platforms planned:** Linux, Windows, and macOS.
+- **Target images:** different operating-system installer images, not only Linux ISOs. The current image check accepts any non-empty regular file; it does not yet identify or verify image formats.
+- **Important limitation:** there is no single universal way to install every OS image. Future support will use image/installer-specific backends, with explicit host capabilities and safety checks. A successful file check does not mean an image is bootable or installable.
 
-## Prerequisites
+Platform support is incremental. Storage and firmware inspection use native host tools and may require those tools to be available.
 
-- **Linux:** `sudo` privileges, `lsblk`, and `efibootmgr`.
-- **Windows:** Administrator privileges, PowerShell, and UEFI firmware with Secure Boot settings configured as needed.
-- **Rust:** Edition 2024 (Cargo).
+## Current features
 
----
+- Basic, read-only image file checks.
+- Read-only storage inspection using `lsblk` on Linux, PowerShell on Windows, and `diskutil` on macOS.
+- Read-only firmware boot configuration inspection using `efibootmgr` on UEFI-booted Linux, `bcdedit` on Windows, and `bless` on macOS.
+- Interactive CLI menu and command-line options.
+- No destructive disk operations in this prototype.
 
-## Building from Source
+## Requirements
 
-Clone the repository and build in release mode for maximum performance:
+- Rust toolchain with Cargo (Rust edition 2024).
+- Linux: `lsblk`; `efibootmgr` is needed to inspect UEFI entries when booted in UEFI mode.
+- Windows: PowerShell and `bcdedit`.
+- macOS: `diskutil` and `bless`.
+
+The inspection commands do not normally require administrator/root privileges, though host tools and system policy can affect the output.
+
+## Build
 
 ```bash
 git clone https://github.com/Techma2004/usb-less-installer.git
 cd usb-less-installer
 cargo build --release
+cargo test
 ```
-
----
 
 ## Usage
 
-Run the installer with interactive menu prompts:
+Interactive menu:
 
 ```bash
-sudo ./target/release/usb-less-installer
+./target/release/usb-less-installer
 ```
 
-Or pass arguments directly:
+Check an image file (read-only):
 
 ```bash
-sudo ./target/release/usb-less-installer --iso /path/to/omarchy.iso
+./target/release/usb-less-installer --iso /path/to/installer.iso
 ```
 
-### CLI Options
+Inspect storage:
 
-- `-i, --iso <PATH>`: Path to the Linux ISO file to install.
-- `-f, --force`: Skip non-interactive safety checks (useful for automated scripts).
+```bash
+./target/release/usb-less-installer --inspect-storage
+```
 
----
+Inspect firmware boot configuration:
+
+```bash
+./target/release/usb-less-installer --inspect-boot
+```
+
+Use the actual path to your image. `--iso` is retained as a familiar option name, but the check is not restricted to `.iso` extensions.
+
+## Safety roadmap
+
+Before any disk-writing feature is considered, the project needs a threat model, target-device identity checks, explicit destructive-operation confirmation, dry-run plans, robust error handling, recovery strategy, and VM-based tests. A future GUI will call the same tested core APIs rather than implement storage logic separately.
+
+**Do not use this prototype to install an OS yet.** It is not an installer and cannot safely prepare a bootable installation.
 
 ## License
 
-Released under the **GNU General Public License v3.0**.
+GNU General Public License v3.0 (GPL-3.0-only).
