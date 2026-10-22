@@ -31,14 +31,14 @@ struct Args {
 fn interactive_menu() -> Result<()> {
     loop {
         let choices = [
-            "Validate an OS image file",
+            "Inspect an OS image file",
             "Inspect storage devices (read-only)",
             "Inspect firmware boot configuration (read-only)",
             "Exit",
         ];
         let selection = Select::new()
             .with_prompt("USB-less Installer — safe inspection tools")
-            .items(choices)
+            .items(&choices)
             .default(0)
             .interact()?;
 
