@@ -1,50 +1,69 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::process::Command;
-use tracing::info;
 
-#[derive(Debug, Clone)]
-pub struct PartitionTarget {
-    pub device_path: String,
-    pub size_gb: u64,
-}
+fn run_and_print(program: &str, args: &[&str], description: &str) -> Result<()> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .with_context(|| format!("Could not run {program}; is it installed and available on PATH?"))?;
 
-pub fn verify_partition_tools() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        let which_parted = Command::new("which").arg("parted").output();
-        if which_parted.is_err() || !which_parted.unwrap().status.success() {
-            println!("⚠️ Warning: 'parted' tool not found. Partition modification will require it later.");
-        } else {
-            info!("Partitioning tools verified successfully.");
-        }
+    if !output.status.success() {
+        bail!(
+            "{description} failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
+
+    print!("{}", String::from_utf8_lossy(&output.stdout));
     Ok(())
 }
 
-pub fn list_targetable_partitions() -> Result<()> {
-    println!("\n=== Phase 2: Partition & Space Management ===");
-    verify_partition_tools()?;
-    
+/// Display storage information only. This function never partitions or formats disks.
+pub fn inspect_storage() -> Result<()> {
+    println!("\n=== Storage inspection (read-only) ===");
+
     #[cfg(target_os = "linux")]
     {
-        let output = Command::new("lsblk")
-            .args(["-o", "NAME,SIZE,FSTYPE,MOUNTPOINT,TYPE", "-J"])
-            .output()
-            .context("Failed to execute lsblk")?;
-        
-        let stdout = String::from_utf8(output.stdout)?;
-        println!("Raw storage layout fetched successfully ({} bytes).", stdout.len());
+        run_and_print(
+            "lsblk",
+            &["--bytes", "--json", "--output", "NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINTS,RM,RO,MODEL"],
+            "lsblk storage inspection",
+        )?;
     }
 
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("powershell")
-            .args(["-Command", "Get-Partition | Select-Object DiskNumber, PartitionNumber, Size, DriveLetter"])
-            .output()
-            .context("Failed to query partitions via PowerShell")?;
-        let stdout = String::from_utf8(output.stdout)?;
-        print!("{}", stdout);
+        run_and_print(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-Disk | Select-Object Number,FriendlyName,BusType,PartitionStyle,OperationalStatus,IsBoot,IsSystem,IsReadOnly,Size | ConvertTo-Json -Depth 3",
+            ],
+            "PowerShell storage inspection",
+        )?;
     }
 
+    #[cfg(target_os = "macos")]
+    {
+        run_and_print("diskutil", &["list"], "diskutil storage inspection")?;
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        bail!("Storage inspection is not yet implemented for this host operating system.");
+    }
+
+    println!("\nNo storage changes were made.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn supported_host_platforms_are_explicit() {
+        assert!(cfg!(any(target_os = "linux", target_os = "windows", target_os = "macos")));
+    }
 }
